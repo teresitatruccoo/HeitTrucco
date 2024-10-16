@@ -96,7 +96,9 @@
             "vumeter.h": "c",
             "rtc_mcu.h": "c",
             "fft.h": "c",
-            "i2c.h": "c"
+            "i2c.h": "c",
+            "servo_sg90.h": "c",
+            "iir_filter.h": "c"
         },
     },
     "tasks": {

@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_rom_sys.h"
+#include "freertos/semphr.h"
 /*==================[macros and definitions]=================================*/
 #define US_RESOLUTION_HZ	1000000	/*!< 1usec */
 #define MSEC				1000	/*!< 1msec = 1000usec */
