@@ -11,10 +11,16 @@
  * @section hardConn Hardware Connection
  *
  * | Peripheral EMG |   ESP32   	|
- * |:--------------:|:--------------|
+ * |:----------:|:------|
  * | 	+5V	 	| 	+5V		|
- * | 	EMG	 	| 	GPIO_1		|
- * | 	GND	 	| 	GND			|
+ * | 	EMG	 	| 	CH1		|
+ * | 	GND	 	| 	GND		|
+ * 
+ * | Peripheral Servo |   ESP32   	|
+ * |:----------:|:----------|
+ * | 	+5V	 	| 	+5V		|
+ * | 	EMG	 	| 	CH2		|
+ * | 	GND	 	| 	GND		|
  *
  *
  * @section changelog Changelog
@@ -45,18 +51,47 @@
 /*==================[macros and definitions]=================================*/
 
 /*==================[internal data definition]===============================*/
-// #define CONFIG_BLINK_PERIOD_medicion 1000 //Fm siendo FmaxEMG 500Hz
-
-#define FS 1000							   // Frecuencia de muestreo. Banda de interes 10Hz-500Hz
+/** @def FS
+ * @brief Frecuencia de muestreo
+ */
+#define FS 1000	// Frecuencia de muestreo. Banda de interes 10Hz-500Hz
+/** @def FC_LOW
+ * @brief Frecuencia de corte filtro PA
+ */						   
 #define FC_LOW 0.2						   // Frecuencia de corte
-#define ORDER_2 2						   // Orden del filtro
-#define SIGNAL_SIZE 1000				   // Tamaño de la señal adquirida
-#define UMBRAL_VALUE 300				   // Umbral de señal que mueve el servo
+/** @def ORDER_2
+ * @brief Orden del filtro PA
+ */	
+#define ORDER_2 2	
+/** @def 	SIGNAL_SIZE
+ * @brief Tamaño de la señal adquirida
+ */						   
+#define SIGNAL_SIZE 1000
+/** @def 	UMBRAL_VALUE
+ * @brief Valor de umbral a superar para inyectar anestesia
+ */					   
+#define UMBRAL_VALUE 250				   // Umbral de señal que mueve el servo
+/** @def 	SERVO_SG90_POSITION
+ * @brief GPIO de conexion del servo
+ */	
 #define SERVO_SG90_PIN GPIO_2			   // Pin del servo
-#define SERVO_SG90_POSITION 90			   // Angulo de mov del servo
+/** @def 	SERVO_SG90_POSITION
+ * @brief Posocicion inicial del servo
+ */	
+#define SERVO_SG90_POSITION 90			   
+/** @def 	CONFIG_BLINK_PERIOD
+ * @brief Periodo timer A para Fm 1000Hz
+ */	
 #define CONFIG_BLINK_PERIOD_medicion 1000  // Periodo timer A para Fm 1000Hz
+/** @def CONFIG_BLINK_PERIOD
+ * @brief Periodo timer B 
+ */	
 #define CONFIG_BLINK_PERIOD_DETECCION 5000 // 50ms es suficiente y da margen para el filtrado y procesado.
+/** @def 	CHUNK
+ * @brief Tamanio de los chunks
+ */	
 #define CHUNK 4
+
 uint16_t signalEMG[CHUNK];
 static float signalEMGfloat[CHUNK];
 static float signalEMGfiltrada[CHUNK];
@@ -69,6 +104,13 @@ TaskHandle_t deteccionEMG_task_handle = NULL;
 
 /*==================[internal functions declaration]=========================*/
 
+/**
+ * @brief Calcula la envolvente de una senial filtrada.
+ *
+ * @param senialFiltrada Senial filtrada de la cual se quiere calcular la envolvente.
+ * @param envolvente Arreglo donde se guardara la envolvente de la senial.
+ * @param tamanio Tamanio de los arreglos senialFiltrada y envolvente.
+ */
 void calcularEnvolvente(float *senialFiltrada, float *envolvente, uint16_t tamanio)
 {
 	float alpha = 0.9;						 // Factor de suavizado
@@ -83,6 +125,14 @@ void calcularEnvolvente(float *senialFiltrada, float *envolvente, uint16_t taman
 ///////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////
 
+/**
+ * @brief Función invocada en la interrupción del timer A
+ *
+ * La función es invocada en la interrupción del timer A y envía una notificación
+ * a la tarea asociada a la medición de la señal EMG.
+ *
+ * @param param puntero a void, no se utiliza
+ */
 void FuncTimerA(void *param)
 {
 	xTaskNotifyGive(medicionEMG_task_handle); // Envía una notificación
@@ -91,7 +141,7 @@ void FuncTimerA(void *param)
  * @brief Función invocada en la interrupción del timer B
  *
  * La función es invocada en la interrupción del timer B y envía una notificación
- * a la tarea asociada a la detección de la señal EMG.
+ * a la tarea asociada a la detección de umbral de la señal EMG.
  *
  * @param param No se utiliza
  */
@@ -100,6 +150,16 @@ void FuncTimerB(void *param)
 	xTaskNotifyGive(deteccionEMG_task_handle); // Envía una notificación
 }
 
+/**
+ * @brief Tarea que lee la señal EMG del canal 1 del ADC,
+ *        la procesa y envía el chunk procesado por puerto serie.
+ *
+ * La tarea lee la señal EMG del canal 1 del ADC y la almacena en un arreglo.
+ * Luego, cuando se ha completado un chunk, lo procesa con un filtro pasa alto
+ * y calculo de la envolvente y envía el chunk procesado por puerto serie.
+ *
+ * @param pvParameter puntero a void, no se utiliza
+ */
 void signalEMG_Task(void *pvParameter)
 {
 	uint8_t i = 0;
@@ -139,8 +199,19 @@ void signalEMG_Task(void *pvParameter)
 		}
 	}
 }
+/**
+ * @brief Tarea que detecta si la señal EMG procesada excede un umbral y mueve el servo 10°.
+ *
+ * La tarea espera una notificación que indica que un nuevo chunk de la señal EMG ha sido procesado.
+ * Recorre los valores del chunk procesado y verifica si alguno excede el umbral definido. Si es así,
+ * incrementa la posición del servo y envía un mensaje por el puerto serie indicando que se inyectó
+ * una unidad de anestesia.
+ *
+ * @param pvParameter puntero a void, no se utiliza
+ */
 void deteccionumbralEMG_Task(void *pvParameter) // TimerB
 {
+	uint16_t posicionServo = 0;
 	while(1)
 	{
 		ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // Espera la notificación de que se ha procesado un nuevo chunk
@@ -150,22 +221,14 @@ void deteccionumbralEMG_Task(void *pvParameter) // TimerB
 			if (signalEMGprocesada[i] > UMBRAL_VALUE)
 			{
 				// Mover el servo si el valor procesado excede el umbral
-				//ServoMove(SERVO_0, SERVO_SG90_POSITION);
+				posicionServo += 10; // Incrementa la posición del servo en 10 grados
+                ServoMove(SERVO_0, posicionServo); // Mueve el servo a la nueva posición
 				UartSendString(UART_PC, "Se inyecto una unidad de anestesia.\r\n"); // Mensaje por puerto serie
-				//Aca habria que poner un delay?
-				//ServoMove(SERVO_0, 0); // Regresar el servo a su posición inicial
 			}
 		}
 	}
 }
 
-void inyectaranestesia_Task(void *pvParameter) // TimerB
-{
-	while (1)
-	{
-		//ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // Recibe una notificacion
-	}
-}
 /*==================[external functions definition]==========================*/
 void app_main(void)
 {
@@ -203,7 +266,7 @@ void app_main(void)
 	UartInit(&puerto);
 	HiPassInit(FS, FC_LOW, ORDER_2);
 	ServoInit(SERVO_0,SERVO_SG90_PIN);
-	ServoMove(SERVO_0, 30);
+	//ServoMove(SERVO_0, 30);
 
 	xTaskCreate(&signalEMG_Task, "senial", 2048, NULL, 5, &medicionEMG_task_handle);
 	xTaskCreate(&deteccionumbralEMG_Task, "senial", 2048, NULL, 5, &deteccionEMG_task_handle);
