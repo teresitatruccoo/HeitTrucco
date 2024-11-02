@@ -35,6 +35,9 @@
         },
         {
             "path": "examples/ProyectoIntegrador"
+        },
+        {
+            "path": "examples/Pruebas"
         }
     ],
     "settings": {
