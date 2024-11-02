@@ -50,7 +50,6 @@
 #include "ble_mcu.h"
 /*==================[macros and definitions]=================================*/
 
-/*==================[internal data definition]===============================*/
 /** @def FS
  * @brief Frecuencia de muestreo
  */
@@ -92,14 +91,32 @@
  */	
 #define CHUNK 4
 
-uint16_t signalEMG[CHUNK];
+/*==================[internal data definition]===============================*/
+
+/**
+ * @brief Variable para almacenar los valores de la señal
+ */
 static float signalEMGfloat[CHUNK];
+/**
+ * @brief Variable para almacenar los valores filtrados
+ */
 static float signalEMGfiltrada[CHUNK];
+/**
+ * @brief Variable para almacenar los valores procesados
+ */
 static float signalEMGprocesada[CHUNK];
+/**
+ * @brief Variable para almacenar los valores del chunk
+ */
 uint16_t signalEMGChunk[CHUNK]; // Arreglo para almacenar los valores del chunk
 
+/**
+ * @brief Elemento de tipo TaskHandle para manejar la tarea de medir+procesar
+ */
 TaskHandle_t medicionEMG_task_handle = NULL;
-TaskHandle_t procesamientoEMG_task_handle = NULL;
+/**
+ * @brief Elemento de tipo TaskHandle para manejar la tarea de deteccion umbral
+ */
 TaskHandle_t deteccionEMG_task_handle = NULL;
 
 /*==================[internal functions declaration]=========================*/
@@ -224,6 +241,7 @@ void deteccionumbralEMG_Task(void *pvParameter) // TimerB
 				posicionServo += 10; // Incrementa la posición del servo en 10 grados
                 ServoMove(SERVO_0, posicionServo); // Mueve el servo a la nueva posición
 				UartSendString(UART_PC, "Se inyecto una unidad de anestesia.\r\n"); // Mensaje por puerto serie
+				UartSendString(UART_PC, "\r");
 			}
 		}
 	}
